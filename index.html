@@ -966,7 +966,7 @@
                 }
                 
                 // Xử lý từng nhân viên (bắt đầu từ hàng 9, mỗi nhân viên chiếm 2 hàng)
-                for (let row = 8; row < 200; row += 2) {
+                for (let row = 8; row < 500; row += 2) { // Fix: Tăng lên 500 để bao phủ tất cả nhân viên
                     const tenNVCell = wsOriginal[XLSX.utils.encode_cell({ r: row, c: 2 })];
                     if (!tenNVCell || !tenNVCell.v) continue;
                     
@@ -1089,7 +1089,7 @@
                     </div>
                     <div class="stats">
                         <div class="stat-card">
-                            <h3>${month}</h3>
+                            <h3>Tháng ${month}</h3>
                             <p>Tháng chấm công</p>
                         </div>
                         <div class="stat-card">
@@ -1098,7 +1098,7 @@
                         </div>
                         <div class="stat-card">
                             <h3>${adjustedCount}</h3>
-                            <p>Bản ghi đã điều chỉnh</p>
+                            <p>Lần tách giờ ra</p>
                         </div>
                     </div>
                     <div class="download-links">
