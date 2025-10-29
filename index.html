@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xử Lý Chấm Công - Fixed Version</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 0.9em;
+        }
+        
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            background: #f8f9ff;
+            margin-bottom: 30px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+        
+        .upload-area.drag-over {
+            background: #e8ebff;
+            border-color: #764ba2;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        .upload-icon {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+        
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, opacity 0.3s;
+            margin-bottom: 20px;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        
+        button:not(:disabled) {
+            opacity: 1 !important;
+            cursor: pointer !important;
+        }
+        
+        #formatBtn {
+            background: linear-gradient(135deg, #f57c00 0%, #ff9800 100%);
+        }
+        
+        #formatBtn:hover:not(:disabled) {
+            box-shadow: 0 10px 20px rgba(245, 124, 0, 0.4);
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        
+        .status.info {
+            background: #e3f2fd;
+            color: #1976d2;
+            border-left: 4px solid #1976d2;
+        }
+        
+        .status.success {
+            background: #e8f5e9;
+            color: #388e3c;
+            border-left: 4px solid #388e3c;
+        }
+        
+        .status.error {
+            background: #ffebee;
+            color: #d32f2f;
+            border-left: 4px solid #d32f2f;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        
+        .stat-card h3 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+        
+        .stat-card p {
+            opacity: 0.9;
+            font-size: 0.9em;
+        }
+        
+        .download-links {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .download-btn {
+            flex: 1;
+            padding: 15px;
+            border-radius: 10px;
+            text-decoration: none;
+            color: white;
+            text-align: center;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+        
+        .download-btn.original {
+            background: linear-gradient(135deg, #43a047 0%, #66bb6a 100%);
+        }
+        
+        .download-btn.adjusted {
+            background: linear-gradient(135deg, #e53935 0%, #ef5350 100%);
+        }
+        
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+        
+        .spinner {
+            border: 4px solid rgba(102, 126, 234, 0.3);
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .info-box {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        
+        .info-box h4 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+        
+        .info-box ul {
+            margin-left: 20px;
+            color: #856404;
+        }
+        
+        .info-box li {
+            margin-bottom: 5px;
+        }
+        
+        .bug-table {
+            width: 100%;
+            margin-top: 20px;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .bug-table thead {
+            background: linear-gradient(135deg, #e53935 0%, #ef5350 100%);
+            color: white;
+        }
+        
+        .bug-table th {
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        
+        .bug-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 0.9em;
+        }
+        
+        .bug-table tbody tr:hover {
+            background: #fff3f3;
+        }
+        
+        .bug-type {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: bold;
+            background: #ffebee;
+            color: #c62828;
+        }
+        
+        .bug-table-container {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Xử Lý Chấm Công</h1>
+        <p class="subtitle">Tự động tách file chấm công theo quy định tăng ca - Fixed Version</p>
+        
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">📁</div>
+            <p><strong>Click để chọn file Excel</strong></p>
+            <p style="margin-top: 10px; color: #666; font-size: 0.9em;">hoặc kéo thả file vào đây</p>
+            <input type="file" id="fileInput" accept=".xlsx,.xls">
+        </div>
+        
+        <button id="formatBtn" disabled>Xử Lý Format</button>
+        <button id="processBtn" disabled>Xử Lý File Tách</button>
+        
+        <div id="statusArea"></div>
+        
+        <div class="info-box">
+            <h4>📋 Quy tắc xử lý:</h4>
+            <h5 style="color: #f57c00; margin-top: 10px;">🔸 Xử Lý Format:</h5>
+            <ul style="margin-bottom: 15px;">
+                <li><strong>Đánh dấu không-logic:</strong> Giờ ra < 12:00 hoặc giờ ra < giờ vào</li>
+                <li><strong>Swap:</strong> Nếu giờ ra < giờ vào → hoán đổi 2 giá trị</li>
+                <li><strong>Fix bug:</strong> Sau khi swap, nếu giờ ra vẫn < 12:00 → +1 giờ làm</li>
+            </ul>
+            <h5 style="color: #667eea; margin-top: 10px;">🔸 Xử Lý File Tách:</h5>
+            <ul>
+                <li><strong>Cell rỗng:</strong> Giờ làm và tăng ca = 0</li>
+                <li><strong>Giờ < 5:00:</strong> Tự động +12 tiếng (0:30 → 12:30)</li>
+                <li><strong>Thứ 2,4,6:</strong> Giờ ra 19:00-19:15 nếu > 17:30</li>
+                <li><strong>Thứ 3,5,7,CN:</strong> Giờ ra 17:30-17:35 nếu > 17:30</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.getElementById('uploadArea');
+        const processBtn = document.getElementById('processBtn');
+        const formatBtn = document.getElementById('formatBtn');
+        const statusArea = document.getElementById('statusArea');
+        
+        let selectedFile = null;
+        
+        // Upload area events
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('drag-over');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('drag-over');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('drag-over');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                handleFileSelect({ target: fileInput });
+            }
+        });
+        
+        fileInput.addEventListener('change', handleFileSelect);
+        processBtn.addEventListener('click', processFile);
+        formatBtn.addEventListener('click', formatFile);
+        
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                selectedFile = file;
+                processBtn.disabled = false;
+                formatBtn.disabled = false;
+                showStatus('info', `✓ Đã chọn file: ${file.name}`);
+            }
+        }
+        
+        function showStatus(type, message) {
+            statusArea.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+        
+        function showSpinner() {
+            statusArea.innerHTML = '<div class="spinner"></div><p style="text-align: center; color: #667eea; margin-top: 10px;">Đang xử lý...</p>';
+        }
+        
+        async function formatFile() {
+            if (!selectedFile) {
+                showStatus('error', '❌ Vui lòng chọn file trước!');
+                return;
+            }
+            
+            formatBtn.disabled = true;
+            processBtn.disabled = true;
+            showSpinner();
+            
+            try {
+                const arrayBuffer = await selectedFile.arrayBuffer();
+                
+                // Đọc file
+                const workbook = XLSX.read(arrayBuffer, {
+                    cellStyles: true,
+                    cellFormulas: true,
+                    cellDates: true,
+                    cellNF: true,
+                    sheetStubs: true
+                });
+                
+                const sheetName = workbook.SheetNames[0];
+                const ws = workbook.Sheets[sheetName];
+                
+                // Tìm tháng chấm công
+                let month = null;
+                for (let col = 0; col < 10; col++) {
+                    const cellRef = XLSX.utils.encode_cell({ r: 3, c: col });
+                    const cell = ws[cellRef];
+                    if (cell && cell.v && typeof cell.v === 'string') {
+                        const match = cell.v.match(/\d{2}\/(\d{2})\/\d{4}/);
+                        if (match) {
+                            month = parseInt(match[1]);
+                            break;
+                        }
+                    }
+                }
+                
+                if (!month) {
+                    throw new Error('Không tìm thấy tháng chấm công trong hàng 4');
+                }
+                
+                // Helper function để parse time
+                function parseExcelTime(cell) {
+                    if (!cell || !cell.v) return null;
+                    
+                    // Trường hợp 1: Có formatted string (.w)
+                    if (cell.w) {
+                        const parts = cell.w.split(':');
+                        if (parts.length >= 2) {
+                            let hours = parseInt(parts[0]);
+                            const minutes = parseInt(parts[1]);
+                            
+                            if (hours < 5) {
+                                hours += 12;
+                            }
+                            
+                            return { hours, minutes, formatted: `${hours}:${minutes.toString().padStart(2, '0')}` };
+                        }
+                    }
+                    
+                    // Trường hợp 2: cell.v là number (Excel serial number)
+                    if (typeof cell.v === 'number') {
+                        const totalMinutes = Math.round(cell.v * 24 * 60);
+                        let hours = Math.floor(totalMinutes / 60) % 24;
+                        const minutes = totalMinutes % 60;
+                        
+                        if (hours < 5) {
+                            hours += 12;
+                        }
+                        
+                        return { hours, minutes, formatted: `${hours}:${minutes.toString().padStart(2, '0')}` };
+                    }
+                    
+                    // Trường hợp 3: cell.v là Date object hoặc string
+                    try {
+                        const date = new Date(cell.v);
+                        if (!isNaN(date.getTime())) {
+                            let hours = date.getUTCHours();
+                            const minutes = date.getUTCMinutes();
+                            
+                            if (hours < 5) {
+                                hours += 12;
+                            }
+                            
+                            return { hours, minutes, formatted: `${hours}:${minutes.toString().padStart(2, '0')}` };
+                        }
+                    } catch (e) {
+                        console.warn('Cannot parse time cell:', cell, e);
+                    }
+                    
+                    return null;
+                }
+                
+                function createExcelTime(hours, minutes) {
+                    const fraction = (hours + minutes / 60) / 24;
+                    return fraction;
+                }
+                
+                // Tìm tất cả các cột ngày
+                const daysInMonth = month === 2 ? 29 : (month === 4 || month === 6 || month === 9 || month === 11 ? 30 : 31);
+                const dayColumns = [];
+                for (let col = 4; col < 100; col += 2) {
+                    const cellRef = XLSX.utils.encode_cell({ r: 6, c: col });
+                    const cell = ws[cellRef];
+                    if (cell && typeof cell.v === 'number' && cell.v >= 1 && cell.v <= daysInMonth) {
+                        dayColumns.push({ day: cell.v, col: col });
+                    }
+                }
+                
+                let swapCount = 0;
+                let fixBugCount = 0;
+                const nonLogicEmployees = [];
+                const bugAfterFormat = []; // Mảng lưu các bug sau khi format
+                
+                // BƯỚC 1: Scan tất cả nhân viên và đánh dấu "không-logic"
+                console.log('=== BƯỚC 1: SCAN NHÂN VIÊN ===');
+                for (let row = 8; row < 500; row += 2) { // Tăng lên 500 để bao phủ tất cả nhân viên
+                    const tenNVCell = ws[XLSX.utils.encode_cell({ r: row, c: 2 })];
+                    if (!tenNVCell || !tenNVCell.v) continue;
+                    
+                    const tenNV = tenNVCell.v;
+                    
+                    // Debug STT 180
+                    const sttCell = ws[XLSX.utils.encode_cell({ r: row, c: 0 })];
+                    if (sttCell && sttCell.v === 180) {
+                        console.log(`\n🎯 FOUND STT 180 at row ${row}: ${tenNV}`);
+                    }
+                    
+                    let hasNonLogic = false;
+                    const nonLogicDays = [];
+                    
+                    for (const { day, col } of dayColumns) {
+                        const gioVaoRef = XLSX.utils.encode_cell({ r: row, c: col });
+                        const gioRaRef = XLSX.utils.encode_cell({ r: row, c: col + 1 });
+                        
+                        const gioVaoCell = ws[gioVaoRef];
+                        const gioRaCell = ws[gioRaRef];
+                        
+                        // Debug STT 180, ngày 9 - TRƯỚC KHI CHECK
+                        if (sttCell && sttCell.v === 180 && day === 9) {
+                            console.log(`\n🔍 DEBUG STT 180, Ngày 9 (col=${col}):`);
+                            console.log(`  gioVaoRef: ${gioVaoRef}`);
+                            console.log(`  gioRaRef: ${gioRaRef}`);
+                            console.log(`  gioVaoCell exists? ${!!gioVaoCell}`);
+                            console.log(`  gioRaCell exists? ${!!gioRaCell}`);
+                            if (gioVaoCell) console.log(`  gioVaoCell.v: ${gioVaoCell.v}`);
+                            if (gioRaCell) console.log(`  gioRaCell.v: ${gioRaCell.v}`);
+                        }
+                        
+                        if (!gioVaoCell || !gioRaCell || !gioVaoCell.v || !gioRaCell.v) {
+                            if (sttCell && sttCell.v === 180 && day === 9) {
+                                console.log(`  ❌ SKIP: Cell hoặc cell.v is null`);
+                            }
+                            continue;
+                        }
+                        
+                        const gioVao = parseExcelTime(gioVaoCell);
+                        const gioRa = parseExcelTime(gioRaCell);
+                        
+                        if (!gioVao || !gioRa) {
+                            if (sttCell && sttCell.v === 180 && day === 9) {
+                                console.log(`  ❌ SKIP: parseExcelTime return null`);
+                                console.log(`  gioVao result:`, gioVao);
+                                console.log(`  gioRa result:`, gioRa);
+                            }
+                            continue;
+                        }
+                        
+                        const vaoMinutes = gioVao.hours * 60 + gioVao.minutes;
+                        const raMinutes = gioRa.hours * 60 + gioRa.minutes;
+                        
+                        // Debug cho STT 180, ngày 9
+                        if (sttCell && sttCell.v === 180 && day === 9) {
+                            console.log(`  ✅ Parsed successfully!`);
+                            console.log(`  Tên: ${tenNV}`);
+                            console.log(`  Cell giờ vào (${gioVaoRef}):`, gioVaoCell);
+                            console.log(`  Cell giờ ra (${gioRaRef}):`, gioRaCell);
+                            console.log(`  parseExcelTime(gioVao):`, gioVao);
+                            console.log(`  parseExcelTime(gioRa):`, gioRa);
+                            console.log(`  Giờ vào: ${gioVao.hours}:${gioVao.minutes} (${vaoMinutes}m)`);
+                            console.log(`  Giờ ra: ${gioRa.hours}:${gioRa.minutes} (${raMinutes}m)`);
+                            console.log(`  Kiểm tra: raMinutes < 12*60? ${raMinutes} < 720? ${raMinutes < 12 * 60}`);
+                            console.log(`  Kiểm tra: raMinutes < vaoMinutes? ${raMinutes} < ${vaoMinutes}? ${raMinutes < vaoMinutes}`);
+                        }
+                        
+                        // Kiểm tra điều kiện không-logic
+                        if (raMinutes < 12 * 60 || raMinutes < vaoMinutes) {
+                            hasNonLogic = true;
+                            nonLogicDays.push({ day, col, gioVaoRef, gioRaRef });
+                            
+                            if (sttCell && sttCell.v === 180 && day === 9) {
+                                console.log(`  → ✅ ĐÃ ĐÁNH DẤU KHÔNG-LOGIC!`);
+                            }
+                        } else {
+                            if (sttCell && sttCell.v === 180 && day === 9) {
+                                console.log(`  → ❌ KHÔNG được đánh dấu không-logic!`);
+                            }
+                        }
+                    }
+                    
+                    if (hasNonLogic) {
+                        nonLogicEmployees.push({ tenNV, row, nonLogicDays });
+                    }
+                }
+                console.log(`=== KẾT THÚC BƯỚC 1: ${nonLogicEmployees.length} nhân viên có ngày không-logic ===\n`);
+                
+                // BƯỚC 2: Swap giờ vào và giờ ra nếu giờ ra < giờ vào
+                console.log('=== BƯỚC 2: BẮT ĐẦU SWAP ===');
+                for (const employee of nonLogicEmployees) {
+                    console.log(`Xử lý nhân viên: ${employee.tenNV}, có ${employee.nonLogicDays.length} ngày không-logic`);
+                    
+                    for (const dayInfo of employee.nonLogicDays) {
+                        const gioVaoCell = ws[dayInfo.gioVaoRef];
+                        const gioRaCell = ws[dayInfo.gioRaRef];
+                        const gioLamRef = XLSX.utils.encode_cell({ r: employee.row + 1, c: dayInfo.col });
+                        
+                        const gioVao = parseExcelTime(gioVaoCell);
+                        const gioRa = parseExcelTime(gioRaCell);
+                        
+                        if (!gioVao || !gioRa) {
+                            console.log(`  Ngày ${dayInfo.day}: Bỏ qua (không có giờ)`);
+                            continue;
+                        }
+                        
+                        const vaoMinutes = gioVao.hours * 60 + gioVao.minutes;
+                        const raMinutes = gioRa.hours * 60 + gioRa.minutes;
+                        
+                        console.log(`  Ngày ${dayInfo.day}: Vào ${gioVao.formatted} (${vaoMinutes}m), Ra ${gioRa.formatted} (${raMinutes}m)`);
+                        
+                        // Nếu giờ ra < giờ vào → SWAP
+                        if (raMinutes < vaoMinutes) {
+                            console.log(`    → CẦN SWAP! (${raMinutes} < ${vaoMinutes})`);
+                            
+                            // Lưu toàn bộ cell gioVao
+                            const tempV = gioVaoCell.v;
+                            const tempW = gioVaoCell.w;
+                            const tempT = gioVaoCell.t;
+                            const tempZ = gioVaoCell.z;
+                            
+                            // Copy gioRa -> gioVao
+                            ws[dayInfo.gioVaoRef] = {
+                                v: gioRaCell.v,
+                                w: gioRaCell.w,
+                                t: gioRaCell.t,
+                                z: gioRaCell.z
+                            };
+                            
+                            // Copy temp (gioVao cũ) -> gioRa
+                            ws[dayInfo.gioRaRef] = {
+                                v: tempV,
+                                w: tempW,
+                                t: tempT,
+                                z: tempZ
+                            };
+                            
+                            swapCount++;
+                            console.log(`    → ĐÃ SWAP! Tổng swap: ${swapCount}`);
+                            
+                            // TÍNH LẠI giờ làm SAU KHI SWAP
+                            // Sau swap: giờ vào = raMinutes, giờ ra = vaoMinutes
+                            const diffMinutes = vaoMinutes - raMinutes;
+                            const newGioLam = Math.round((diffMinutes / 60) * 100) / 100;
+                            
+                            ws[gioLamRef] = { t: 'n', v: newGioLam };
+                            console.log(`    → Giờ làm mới: ${newGioLam}`);
+                        } else {
+                            console.log(`    → Không cần swap (${raMinutes} >= ${vaoMinutes})`);
+                        }
+                    }
+                }
+                console.log(`=== KẾT THÚC BƯỚC 2: Đã swap ${swapCount} lần ===`);
+                
+                // BƯỚC 3: Fix bug under 12:00 (sau khi swap xong)
+                for (const employee of nonLogicEmployees) {
+                    for (const dayInfo of employee.nonLogicDays) {
+                        const gioVaoCell = ws[dayInfo.gioVaoRef];
+                        const gioRaCell = ws[dayInfo.gioRaRef];
+                        const gioLamRef = XLSX.utils.encode_cell({ r: employee.row + 1, c: dayInfo.col });
+                        const gioLamCell = ws[gioLamRef];
+                        
+                        const gioVao = parseExcelTime(gioVaoCell);
+                        const gioRa = parseExcelTime(gioRaCell);
+                        
+                        if (!gioVao || !gioRa) continue;
+                        
+                        const vaoMinutes = gioVao.hours * 60 + gioVao.minutes;
+                        const raMinutes = gioRa.hours * 60 + gioRa.minutes;
+                        
+                        // Điều kiện: giờ ra > giờ vào VÀ giờ ra < 12:00
+                        if (raMinutes > vaoMinutes && raMinutes < 12 * 60) {
+                            // Auto +1 vào giờ làm chính thức
+                            const currentGioLam = gioLamCell && gioLamCell.v ? gioLamCell.v : 0;
+                            ws[gioLamRef] = { t: 'n', v: currentGioLam + 1 };
+                            fixBugCount++;
+                        }
+                    }
+                }
+                
+                // BƯỚC 4: Phát hiện bug-after-format
+                for (let row = 8; row < 200; row += 2) {
+                    const maNVCell = ws[XLSX.utils.encode_cell({ r: row, c: 1 })]; // Cột B
+                    const tenNVCell = ws[XLSX.utils.encode_cell({ r: row, c: 2 })]; // Cột C
+                    if (!tenNVCell || !tenNVCell.v) continue;
+                    
+                    const maNV = maNVCell?.v || '';
+                    const tenNV = tenNVCell.v;
+                    
+                    for (const { day, col } of dayColumns) {
+                        // Lấy thứ trong tuần
+                        const thuCell = ws[XLSX.utils.encode_cell({ r: 7, c: col })];
+                        const thu = thuCell?.v;
+                        
+                        if (!thu) continue;
+                        
+                        const gioVaoRef = XLSX.utils.encode_cell({ r: row, c: col });
+                        const gioRaRef = XLSX.utils.encode_cell({ r: row, c: col + 1 });
+                        const gioLamRef = XLSX.utils.encode_cell({ r: row + 1, c: col });
+                        const tangCaRef = XLSX.utils.encode_cell({ r: row + 1, c: col + 1 });
+                        
+                        const gioVaoCell = ws[gioVaoRef];
+                        const gioRaCell = ws[gioRaRef];
+                        const gioLamCell = ws[gioLamRef];
+                        const tangCaCell = ws[tangCaRef];
+                        
+                        if (!gioVaoCell || !gioRaCell || !gioVaoCell.v || !gioRaCell.v) continue;
+                        
+                        const gioVao = parseExcelTime(gioVaoCell);
+                        const gioRa = parseExcelTime(gioRaCell);
+                        
+                        if (!gioVao || !gioRa) continue;
+                        
+                        const vaoMinutes = gioVao.hours * 60 + gioVao.minutes;
+                        const raMinutes = gioRa.hours * 60 + gioRa.minutes;
+                        
+                        let bugType = null;
+                        
+                        // Kiểm tra các điều kiện bug
+                        if (gioVao.formatted === gioRa.formatted) {
+                            bugType = 'Giờ vào = Giờ ra';
+                        } else if (raMinutes < 9 * 60) {
+                            bugType = 'Giờ ra < 9:00';
+                        } else if (raMinutes < vaoMinutes) {
+                            bugType = 'Giờ ra < Giờ vào (swap sai)';
+                        }
+                        
+                        if (bugType) {
+                            bugAfterFormat.push({
+                                maNV: maNV,
+                                tenNV: tenNV,
+                                ngay: day,
+                                thu: thu,
+                                gioVao: gioVao.formatted,
+                                gioRa: gioRa.formatted,
+                                gioLam: gioLamCell?.v || 0,
+                                tangCa: tangCaCell?.v || 0,
+                                bugType: bugType
+                            });
+                        }
+                    }
+                }
+                
+                // Tạo file output
+                const output = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+                const blob = new Blob([output], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = URL.createObjectURL(blob);
+                
+                const fileName = selectedFile.name.replace('.xlsx', '');
+                
+                // Tạo HTML cho bảng bug (nếu có)
+                let bugTableHTML = '';
+                if (bugAfterFormat.length > 0) {
+                    bugTableHTML = `
+                        <div style="margin-top: 30px;">
+                            <h3 style="color: #e53935; margin-bottom: 10px;">⚠️ Các trường hợp cần kiểm tra lại trực tiếp với nhân viên (${bugAfterFormat.length})</h3>
+                            <p style="color: #666; margin-bottom: 10px;">Danh sách các trường hợp bất thường:</p>
+                            <div class="bug-table-container">
+                                <table class="bug-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Mã NV</th>
+                                            <th>Tên NV</th>
+                                            <th>Ngày</th>
+                                            <th>Thứ</th>
+                                            <th>Giờ Vào</th>
+                                            <th>Giờ Ra</th>
+                                            <th>Tăng Ca</th>
+                                            <th>Ghi Chú</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${bugAfterFormat.map(bug => `
+                                            <tr>
+                                                <td>${bug.maNV}</td>
+                                                <td><strong>${bug.tenNV}</strong></td>
+                                                <td>${bug.ngay}</td>
+                                                <td>${bug.thu}</td>
+                                                <td>${bug.gioVao}</td>
+                                                <td>${bug.gioRa}</td>
+                                                <td>${typeof bug.tangCa === 'number' ? bug.tangCa.toFixed(2) : bug.tangCa}</td>
+                                                <td><span class="bug-type">${bug.bugType}</span></td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Hiển thị kết quả
+                statusArea.innerHTML = `
+                    <div class="status success">
+                        ✅ Xử lý format thành công!
+                    </div>
+                    <div class="stats">
+                        <div class="stat-card">
+                            <h3>${nonLogicEmployees.length}</h3>
+                            <p>Nhân viên có ngày không-logic</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>${swapCount}</h3>
+                            <p>Lần swap giờ vào/ra</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>${fixBugCount}</h3>
+                            <p>Giờ làm đã fix (+1)</p>
+                        </div>
+                        <div class="stat-card" style="background: linear-gradient(135deg, #e53935 0%, #ef5350 100%);">
+                            <h3>${bugAfterFormat.length}</h3>
+                            <p>Cần kiểm tra lại</p>
+                        </div>
+                    </div>
+                    ${bugTableHTML}
+                    <div class="download-links" style="margin-top: 20px;">
+                        <a href="${url}" download="${fileName} đã xử lý.xlsx" class="download-btn" style="background: linear-gradient(135deg, #f57c00 0%, #ff9800 100%);">
+                            📥 Tải File Đã Xử Lý
+                        </a>
+                    </div>
+                `;
+                
+                formatBtn.disabled = false;
+                processBtn.disabled = false;
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showStatus('error', `❌ Lỗi: ${error.message}`);
+                formatBtn.disabled = false;
+                processBtn.disabled = false;
+            }
+        }
+        
+        async function processFile() {
+            if (!selectedFile) {
+                showStatus('error', '❌ Vui lòng chọn file trước!');
+                return;
+            }
+            
+            processBtn.disabled = true;
+            showSpinner();
+            
+            try {
+                const arrayBuffer = await selectedFile.arrayBuffer();
+                
+                // Đọc file gốc
+                const workbookOriginal = XLSX.read(arrayBuffer, {
+                    cellStyles: true,
+                    cellFormulas: true,
+                    cellDates: true,
+                    cellNF: true,
+                    sheetStubs: true
+                });
+                
+                // Tạo copy cho file đã tách
+                const workbookAdjusted = XLSX.read(arrayBuffer, {
+                    cellStyles: true,
+                    cellFormulas: true,
+                    cellDates: true,
+                    cellNF: true,
+                    sheetStubs: true
+                });
+                
+                const sheetName = workbookOriginal.SheetNames[0];
+                const wsOriginal = workbookOriginal.Sheets[sheetName];
+                const wsAdjusted = workbookAdjusted.Sheets[sheetName];
+                
+                // Tìm tháng chấm công
+                let month = null;
+                for (let col = 0; col < 10; col++) {
+                    const cellRef = XLSX.utils.encode_cell({ r: 3, c: col });
+                    const cell = wsOriginal[cellRef];
+                    if (cell && cell.v && typeof cell.v === 'string') {
+                        const match = cell.v.match(/\d{2}\/(\d{2})\/\d{4}/);
+                        if (match) {
+                            month = parseInt(match[1]);
+                            break;
+                        }
+                    }
+                }
+                
+                if (!month) {
+                    throw new Error('Không tìm thấy tháng chấm công trong hàng 4');
+                }
+                
+                // Helper functions
+                function parseExcelTime(cell) {
+                    if (!cell || !cell.v) return null;
+                    
+                    if (cell.w) {
+                        const parts = cell.w.split(':');
+                        if (parts.length >= 2) {
+                            let hours = parseInt(parts[0]);
+                            const minutes = parseInt(parts[1]);
+                            
+                            // Fix: Giờ < 5:00 thì +12 tiếng
+                            if (hours < 5) {
+                                hours += 12;
+                            }
+                            
+                            return { hours, minutes, formatted: `${hours}:${minutes.toString().padStart(2, '0')}` };
+                        }
+                    }
+                    
+                    if (typeof cell.v === 'number') {
+                        const totalMinutes = Math.round(cell.v * 24 * 60);
+                        let hours = Math.floor(totalMinutes / 60) % 24;
+                        const minutes = totalMinutes % 60;
+                        
+                        // Fix: Giờ < 5:00 thì +12 tiếng
+                        if (hours < 5) {
+                            hours += 12;
+                        }
+                        
+                        return { hours, minutes, formatted: `${hours}:${minutes.toString().padStart(2, '0')}` };
+                    }
+                    
+                    const date = new Date(cell.v);
+                    let hours = date.getUTCHours();
+                    const minutes = date.getUTCMinutes();
+                    
+                    // Fix: Giờ < 5:00 thì +12 tiếng
+                    if (hours < 5) {
+                        hours += 12;
+                    }
+                    
+                    return { hours, minutes, formatted: `${hours}:${minutes.toString().padStart(2, '0')}` };
+                }
+                
+                function createExcelTime(hours, minutes) {
+                    const fraction = (hours + minutes / 60) / 24;
+                    return fraction;
+                }
+                
+                function isTimeInRange(hours, minutes, startHour, startMin, endHour, endMin) {
+                    const timeInMinutes = hours * 60 + minutes;
+                    const startInMinutes = startHour * 60 + startMin;
+                    const endInMinutes = endHour * 60 + endMin;
+                    return timeInMinutes >= startInMinutes && timeInMinutes <= endInMinutes;
+                }
+                
+                function calculateGioLam(gioVao, gioRa) {
+                    if (!gioVao || !gioRa) return 0;
+                    
+                    const vaoMinutes = gioVao.hours * 60 + gioVao.minutes;
+                    const raMinutes = gioRa.hours * 60 + gioRa.minutes;
+                    
+                    // Giờ ra < 12:00: Tính khoảng chênh giữa giờ vào thực tế và giờ ra
+                    if (raMinutes < 12 * 60) {
+                        const diffMinutes = raMinutes - vaoMinutes;
+                        return Math.round((diffMinutes / 60) * 100) / 100;
+                    }
+                    
+                    // 12:00 < Giờ ra < 16:30
+                    if (raMinutes >= 12 * 60 && raMinutes < 16 * 60 + 30) {
+                        const baseline = 16 * 60 + 30; // 16:30
+                        const diffMinutes = baseline - raMinutes;
+                        const reduction = diffMinutes / 60;
+                        return Math.round((8 - reduction) * 100) / 100;
+                    }
+                    
+                    // Giờ ra >= 16:30
+                    return 8;
+                }
+                
+                // Xử lý từng ngày và từng nhân viên
+                let adjustedCount = 0;
+                const daysInMonth = month === 2 ? 29 : (month === 4 || month === 6 || month === 9 || month === 11 ? 30 : 31);
+                
+                // Tìm tất cả các cột ngày (hàng 7)
+                const dayColumns = [];
+                for (let col = 4; col < 100; col += 2) {
+                    const cellRef = XLSX.utils.encode_cell({ r: 6, c: col });
+                    const cell = wsOriginal[cellRef];
+                    if (cell && typeof cell.v === 'number' && cell.v >= 1 && cell.v <= daysInMonth) {
+                        dayColumns.push({ day: cell.v, col: col });
+                    }
+                }
+                
+                // Xử lý từng nhân viên (bắt đầu từ hàng 9, mỗi nhân viên chiếm 2 hàng)
+                for (let row = 8; row < 200; row += 2) {
+                    const tenNVCell = wsOriginal[XLSX.utils.encode_cell({ r: row, c: 2 })];
+                    if (!tenNVCell || !tenNVCell.v) continue;
+                    
+                    // Xử lý từng ngày
+                    for (const { day, col } of dayColumns) {
+                        // Lấy thứ trong tuần
+                        const thuCell = wsOriginal[XLSX.utils.encode_cell({ r: 7, c: col })];
+                        const thu = thuCell?.v;
+                        
+                        if (!thu) continue;
+                        
+                        // Lấy các cell liên quan
+                        const gioVaoRef = XLSX.utils.encode_cell({ r: row, c: col });
+                        const gioRaRef = XLSX.utils.encode_cell({ r: row, c: col + 1 });
+                        const gioLamRef = XLSX.utils.encode_cell({ r: row + 1, c: col });
+                        const tangCaRef = XLSX.utils.encode_cell({ r: row + 1, c: col + 1 });
+                        
+                        const gioVaoCell = wsAdjusted[gioVaoRef];
+                        const gioRaCell = wsAdjusted[gioRaRef];
+                        const gioLamCell = wsAdjusted[gioLamRef];
+                        const tangCaCell = wsAdjusted[tangCaRef];
+                        
+                        // Fix: Cell rỗng → 0
+                        if (!gioLamCell || !gioLamCell.v) {
+                            wsAdjusted[gioLamRef] = { t: 'n', v: 0 };
+                        }
+                        if (!tangCaCell || !tangCaCell.v) {
+                            wsAdjusted[tangCaRef] = { t: 'n', v: 0 };
+                        }
+                        
+                        // Nếu không có giờ vào hoặc giờ ra, bỏ qua
+                        if (!gioVaoCell || !gioRaCell || !gioVaoCell.v || !gioRaCell.v) {
+                            continue;
+                        }
+                        
+                        const gioVao = parseExcelTime(gioVaoCell);
+                        const gioRa = parseExcelTime(gioRaCell);
+                        
+                        if (!gioVao || !gioRa) continue;
+                        
+                        let needAdjust = false;
+                        let newGioRa = null;
+                        let gioRaChanged = false;
+                        
+                        // Chỉ xử lý nếu giờ ra > 17:30
+                        const raMinutes = gioRa.hours * 60 + gioRa.minutes;
+                        if (raMinutes > 17 * 60 + 30) {
+                            // Thứ 2, 4, 6: 19:00-19:15
+                            if (['T.2', 'T.4', 'T.6'].includes(thu)) {
+                                const randomMin = Math.floor(Math.random() * 16) + (19 * 60);
+                                const hours = Math.floor(randomMin / 60);
+                                const minutes = randomMin % 60;
+                                newGioRa = createExcelTime(hours, minutes);
+                                needAdjust = true;
+                                gioRaChanged = true;
+                            }
+                            // Thứ 3, 5, 7, CN: 17:30-17:35
+                            else if (['T.3', 'T.5', 'T.7', 'CN'].includes(thu)) {
+                                const randomMin = Math.floor(Math.random() * 6) + (17 * 60 + 30);
+                                const hours = Math.floor(randomMin / 60);
+                                const minutes = randomMin % 60;
+                                newGioRa = createExcelTime(hours, minutes);
+                                needAdjust = true;
+                                gioRaChanged = true;
+                            }
+                        }
+                        
+                        if (needAdjust) {
+                            // Cập nhật giờ ra
+                            if (newGioRa !== null) {
+                                wsAdjusted[gioRaRef] = {
+                                    t: 'n',
+                                    v: newGioRa,
+                                    z: 'h:mm',
+                                    w: undefined
+                                };
+                            }
+                            
+                            // Tính lại giờ làm và tăng ca
+                            if (gioRaChanged) {
+                                const newGioRaTime = {
+                                    hours: Math.floor(newGioRa * 24),
+                                    minutes: Math.round((newGioRa * 24 * 60) % 60)
+                                };
+                                
+                                const newGioLam = calculateGioLam(gioVao, newGioRaTime);
+                                
+                                // Tính tăng ca: Khoảng chênh giữa 17:00 và giờ ra mới
+                                const raMinutesNew = newGioRaTime.hours * 60 + newGioRaTime.minutes;
+                                const baselineMinutes = 17 * 60; // 17:00
+                                const tangCaMinutes = Math.max(0, raMinutesNew - baselineMinutes);
+                                const newTangCa = Math.round((tangCaMinutes / 60) * 100) / 100;
+                                
+                                wsAdjusted[gioLamRef] = { t: 'n', v: newGioLam };
+                                wsAdjusted[tangCaRef] = { t: 'n', v: newTangCa };
+                            }
+                            
+                            adjustedCount++;
+                        }
+                    }
+                }
+                
+                // Tạo file output
+                const originalOutput = XLSX.write(workbookOriginal, { bookType: 'xlsx', type: 'array' });
+                const adjustedOutput = XLSX.write(workbookAdjusted, { bookType: 'xlsx', type: 'array' });
+                
+                // Tạo blob và download
+                const originalBlob = new Blob([originalOutput], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const adjustedBlob = new Blob([adjustedOutput], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                
+                const originalUrl = URL.createObjectURL(originalBlob);
+                const adjustedUrl = URL.createObjectURL(adjustedBlob);
+                
+                const fileName = selectedFile.name.replace('.xlsx', '');
+                
+                // Hiển thị kết quả
+                statusArea.innerHTML = `
+                    <div class="status success">
+                        ✅ Xử lý thành công!
+                    </div>
+                    <div class="stats">
+                        <div class="stat-card">
+                            <h3>${month}</h3>
+                            <p>Tháng chấm công</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>${dayColumns.length}</h3>
+                            <p>Ngày làm việc</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>${adjustedCount}</h3>
+                            <p>Bản ghi đã điều chỉnh</p>
+                        </div>
+                    </div>
+                    <div class="download-links">
+                        <a href="${originalUrl}" download="${fileName}.xlsx" class="download-btn original">
+                            📥 Tải File Gốc
+                        </a>
+                        <a href="${adjustedUrl}" download="${fileName} đã tách.xlsx" class="download-btn adjusted">
+                            📥 Tải File Đã Tách
+                        </a>
+                    </div>
+                `;
+                
+                processBtn.disabled = false;
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showStatus('error', `❌ Lỗi: ${error.message}`);
+                processBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
