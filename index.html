@@ -110,6 +110,14 @@
             box-shadow: 0 10px 20px rgba(245, 124, 0, 0.4);
         }
         
+        #overtimeBtn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        #overtimeBtn:hover:not(:disabled) {
+            box-shadow: 0 10px 20px rgba(245, 87, 108, 0.4);
+        }
+        
         .status {
             padding: 15px;
             border-radius: 10px;
@@ -292,6 +300,7 @@
         
         <button id="formatBtn" disabled>Xử Lý Format</button>
         <button id="processBtn" disabled>Xử Lý File Tách</button>
+        <button id="overtimeBtn" disabled>Xử Lý Giờ Tăng Ca</button>
         
         <div id="statusArea"></div>
         
@@ -304,11 +313,19 @@
                 <li><strong>Fix bug:</strong> Sau khi swap, nếu giờ ra vẫn < 12:00 → +1 giờ làm</li>
             </ul>
             <h5 style="color: #667eea; margin-top: 10px;">🔸 Xử Lý File Tách:</h5>
-            <ul>
+            <ul style="margin-bottom: 15px;">
                 <li><strong>Cell rỗng:</strong> Giờ làm và tăng ca = 0</li>
                 <li><strong>Giờ < 5:00:</strong> Tự động +12 tiếng (0:30 → 12:30)</li>
                 <li><strong>Thứ 2,4,6:</strong> Giờ ra 19:00-19:15 nếu > 17:30</li>
                 <li><strong>Thứ 3,5,7,CN:</strong> Giờ ra 17:30-17:35 nếu > 17:30</li>
+            </ul>
+            <h5 style="color: #f5576c; margin-top: 10px;">🔸 Xử Lý Giờ Tăng Ca:</h5>
+            <ul>
+                <li><strong>Input:</strong> Cần 2 files (File Gốc + File Đã Tách)</li>
+                <li><strong>Giờ vào Final:</strong> |Gốc - Đã tách| (làm tròn 2 chữ số)</li>
+                <li><strong>Giờ ra Final:</strong> |Gốc - Đã tách| (làm tròn 2 chữ số)</li>
+                <li><strong>Giờ làm Final:</strong> |Gốc - Đã tách|</li>
+                <li><strong>Tăng ca Final:</strong> |Gốc - Đã tách|</li>
             </ul>
         </div>
     </div>
@@ -318,6 +335,7 @@
         const uploadArea = document.getElementById('uploadArea');
         const processBtn = document.getElementById('processBtn');
         const formatBtn = document.getElementById('formatBtn');
+        const overtimeBtn = document.getElementById('overtimeBtn');
         const statusArea = document.getElementById('statusArea');
         
         let selectedFile = null;
@@ -347,6 +365,7 @@
         fileInput.addEventListener('change', handleFileSelect);
         processBtn.addEventListener('click', processFile);
         formatBtn.addEventListener('click', formatFile);
+        overtimeBtn.addEventListener('click', processOvertime);
         
         function handleFileSelect(e) {
             const file = e.target.files[0];
@@ -354,6 +373,7 @@
                 selectedFile = file;
                 processBtn.disabled = false;
                 formatBtn.disabled = false;
+                overtimeBtn.disabled = false;
                 showStatus('info', `✓ Đã chọn file: ${file.name}`);
             }
         }
@@ -1118,6 +1138,278 @@
                 showStatus('error', `❌ Lỗi: ${error.message}`);
                 processBtn.disabled = false;
             }
+        }
+        
+        // Hàm xử lý giờ tăng ca - tính diff giữa file gốc và file đã tách
+        async function processOvertime() {
+            if (!selectedFile) {
+                showStatus('error', '❌ Vui lòng chọn file trước!');
+                return;
+            }
+            
+            // Yêu cầu người dùng upload 2 files: gốc và đã tách
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.xlsx,.xls';
+            input.multiple = true;
+            
+            showStatus('info', '📂 Vui lòng chọn 2 files: File Gốc và File Đã Tách');
+            
+            input.onchange = async (e) => {
+                const files = Array.from(e.target.files);
+                
+                if (files.length !== 2) {
+                    showStatus('error', '❌ Vui lòng chọn đúng 2 files!');
+                    return;
+                }
+                
+                overtimeBtn.disabled = true;
+                showSpinner();
+                
+                try {
+                    // Đọc 2 files
+                    const arrayBuffer1 = await files[0].arrayBuffer();
+                    const arrayBuffer2 = await files[1].arrayBuffer();
+                    
+                    const wb1 = XLSX.read(arrayBuffer1, { cellDates: true, cellNF: true, cellStyles: true });
+                    const wb2 = XLSX.read(arrayBuffer2, { cellDates: true, cellNF: true, cellStyles: true });
+                    
+                    const ws1 = wb1.Sheets[wb1.SheetNames[0]];
+                    const ws2 = wb2.Sheets[wb2.SheetNames[0]];
+                    
+                    // Xác định file nào là gốc, file nào là đã tách
+                    // File gốc thường có giờ ra lớn hơn
+                    let wsOriginal, wsAdjusted, fileNameOriginal, fileNameAdjusted;
+                    
+                    // Sample check một vài cell để xác định
+                    const sample1 = ws1[XLSX.utils.encode_cell({ r: 14, c: 5 })];  // Row 15, col F (giờ ra)
+                    const sample2 = ws2[XLSX.utils.encode_cell({ r: 14, c: 5 })];
+                    
+                    if (sample1 && sample2 && sample1.v && sample2.v) {
+                        const val1 = typeof sample1.v === 'number' ? sample1.v : 0;
+                        const val2 = typeof sample2.v === 'number' ? sample2.v : 0;
+                        
+                        if (val1 > val2) {
+                            wsOriginal = ws1;
+                            wsAdjusted = ws2;
+                            fileNameOriginal = files[0].name;
+                            fileNameAdjusted = files[1].name;
+                        } else {
+                            wsOriginal = ws2;
+                            wsAdjusted = ws1;
+                            fileNameOriginal = files[1].name;
+                            fileNameAdjusted = files[0].name;
+                        }
+                    } else {
+                        // Không xác định được, lấy theo thứ tự
+                        wsOriginal = ws1;
+                        wsAdjusted = ws2;
+                        fileNameOriginal = files[0].name;
+                        fileNameAdjusted = files[1].name;
+                    }
+                    
+                    // Tìm tháng chấm công
+                    let month = null;
+                    for (let col = 0; col < 10; col++) {
+                        const cellRef = XLSX.utils.encode_cell({ r: 3, c: col });
+                        const cell = wsOriginal[cellRef];
+                        if (cell && cell.v && typeof cell.v === 'string') {
+                            const match = cell.v.match(/\d{2}\/(\d{2})\/\d{4}/);
+                            if (match) {
+                                month = parseInt(match[1]);
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!month) month = 7; // Default
+                    
+                    // Tạo workbook mới cho file Final
+                    const wbFinal = XLSX.utils.book_new();
+                    const wsFinal = {};
+                    
+                    // Copy structure từ file gốc
+                    const range = XLSX.utils.decode_range(wsOriginal['!ref']);
+                    for (let R = range.s.r; R <= range.e.r; ++R) {
+                        for (let C = range.s.c; C <= range.e.c; ++C) {
+                            const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+                            const cellOriginal = wsOriginal[cellRef];
+                            
+                            if (cellOriginal) {
+                                // Copy cell
+                                wsFinal[cellRef] = {
+                                    t: cellOriginal.t,
+                                    v: cellOriginal.v,
+                                    z: cellOriginal.z,
+                                    w: cellOriginal.w
+                                };
+                            }
+                        }
+                    }
+                    
+                    wsFinal['!ref'] = wsOriginal['!ref'];
+                    if (wsOriginal['!merges']) wsFinal['!merges'] = wsOriginal['!merges'];
+                    if (wsOriginal['!cols']) wsFinal['!cols'] = wsOriginal['!cols'];
+                    if (wsOriginal['!rows']) wsFinal['!rows'] = wsOriginal['!rows'];
+                    
+                    // Helper để parse time thành số giờ
+                    function parseTimeToHours(cell) {
+                        if (!cell || !cell.v) return 0;
+                        
+                        if (typeof cell.v === 'number') {
+                            // Excel serial number
+                            return cell.v * 24;
+                        }
+                        
+                        if (cell.w) {
+                            const parts = cell.w.split(':');
+                            if (parts.length >= 2) {
+                                const hours = parseInt(parts[0]);
+                                const minutes = parseInt(parts[1]);
+                                return hours + minutes / 60;
+                            }
+                        }
+                        
+                        if (cell.v instanceof Date) {
+                            return cell.v.getHours() + cell.v.getMinutes() / 60;
+                        }
+                        
+                        return 0;
+                    }
+                    
+                    // Tìm các cột ngày
+                    const dayColumns = [];
+                    for (let col = 4; col < 100; col += 2) {
+                        const cellRef = XLSX.utils.encode_cell({ r: 6, c: col });
+                        const cell = wsOriginal[cellRef];
+                        if (cell && typeof cell.v === 'number' && cell.v >= 1 && cell.v <= 31) {
+                            dayColumns.push({ day: cell.v, col: col });
+                        }
+                    }
+                    
+                    // Xử lý từng nhân viên
+                    let processedCount = 0;
+                    
+                    for (let row = 8; row < 500; row += 2) {
+                        const tenNVCell = wsOriginal[XLSX.utils.encode_cell({ r: row, c: 2 })];
+                        if (!tenNVCell || !tenNVCell.v) continue;
+                        
+                        // Xử lý từng ngày
+                        for (const { day, col } of dayColumns) {
+                            // Refs cho 4 thông số
+                            const gioVaoRef = XLSX.utils.encode_cell({ r: row, c: col });
+                            const gioRaRef = XLSX.utils.encode_cell({ r: row, c: col + 1 });
+                            const gioLamRef = XLSX.utils.encode_cell({ r: row + 1, c: col });
+                            const tangCaRef = XLSX.utils.encode_cell({ r: row + 1, c: col + 1 });
+                            
+                            // Lấy giá trị từ file gốc
+                            const gioVaoOrig = wsOriginal[gioVaoRef];
+                            const gioRaOrig = wsOriginal[gioRaRef];
+                            const gioLamOrig = wsOriginal[gioLamRef];
+                            const tangCaOrig = wsOriginal[tangCaRef];
+                            
+                            // Lấy giá trị từ file đã tách
+                            const gioVaoAdj = wsAdjusted[gioVaoRef];
+                            const gioRaAdj = wsAdjusted[gioRaRef];
+                            const gioLamAdj = wsAdjusted[gioLamRef];
+                            const tangCaAdj = wsAdjusted[tangCaRef];
+                            
+                            // Tính diff
+                            // Giờ vào: diff = gốc - đã tách (số giờ)
+                            const gioVaoDiff = parseTimeToHours(gioVaoOrig) - parseTimeToHours(gioVaoAdj);
+                            
+                            // Giờ ra: diff = gốc - đã tách (số giờ)
+                            const gioRaDiff = parseTimeToHours(gioRaOrig) - parseTimeToHours(gioRaAdj);
+                            
+                            // Giờ làm: diff = gốc - đã tách
+                            const gioLamDiffVal = (gioLamOrig?.v || 0) - (gioLamAdj?.v || 0);
+                            const gioLamDiff = Math.round(gioLamDiffVal * 100) / 100;
+                            
+                            // Tăng ca: diff = gốc - đã tách
+                            const tangCaDiffVal = (tangCaOrig?.v || 0) - (tangCaAdj?.v || 0);
+                            const tangCaDiff = Math.round(tangCaDiffVal * 100) / 100;
+                            
+                            // Ghi vào file Final
+                            // Giờ vào: ghi số giờ (làm tròn 2 chữ số)
+                            wsFinal[gioVaoRef] = {
+                                t: 'n',
+                                v: Math.round(Math.abs(gioVaoDiff) * 100) / 100
+                            };
+                            
+                            // Giờ ra: ghi số giờ (làm tròn 2 chữ số)
+                            wsFinal[gioRaRef] = {
+                                t: 'n',
+                                v: Math.round(Math.abs(gioRaDiff) * 100) / 100
+                            };
+                            
+                            // Giờ làm chính thức
+                            wsFinal[gioLamRef] = {
+                                t: 'n',
+                                v: Math.abs(gioLamDiff)
+                            };
+                            
+                            // Tăng ca
+                            wsFinal[tangCaRef] = {
+                                t: 'n',
+                                v: Math.abs(tangCaDiff)
+                            };
+                            
+                            processedCount++;
+                        }
+                    }
+                    
+                    // Thêm sheet vào workbook
+                    XLSX.utils.book_append_sheet(wbFinal, wsFinal, 'Sheet1');
+                    
+                    // Tạo file output
+                    const finalOutput = XLSX.write(wbFinal, { bookType: 'xlsx', type: 'array' });
+                    const finalBlob = new Blob([finalOutput], { 
+                        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+                    });
+                    const finalUrl = URL.createObjectURL(finalBlob);
+                    
+                    // Hiển thị kết quả
+                    statusArea.innerHTML = `
+                        <div class="status success">
+                            ✅ Xử lý giờ tăng ca thành công!
+                        </div>
+                        <div class="stats">
+                            <div class="stat-card">
+                                <h3>Tháng ${month}</h3>
+                                <p>Tháng chấm công</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3>${dayColumns.length}</h3>
+                                <p>Ngày làm việc</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3>${processedCount}</h3>
+                                <p>Bản ghi đã xử lý</p>
+                            </div>
+                        </div>
+                        <div class="files-info" style="margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 10px;">
+                            <p style="margin: 5px 0;"><strong>📄 File gốc:</strong> ${fileNameOriginal}</p>
+                            <p style="margin: 5px 0;"><strong>📄 File đã tách:</strong> ${fileNameAdjusted}</p>
+                        </div>
+                        <div class="download-links">
+                            <a href="${finalUrl}" download="Final Tháng ${month}.xlsx" 
+                               class="download-btn" 
+                               style="width: 100%; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                                📥 Tải File Final (Giờ Tăng Ca)
+                            </a>
+                        </div>
+                    `;
+                    
+                    overtimeBtn.disabled = false;
+                    
+                } catch (error) {
+                    console.error('Error:', error);
+                    showStatus('error', `❌ Lỗi: ${error.message}`);
+                    overtimeBtn.disabled = false;
+                }
+            };
+            
+            input.click();
         }
     </script>
 </body>
