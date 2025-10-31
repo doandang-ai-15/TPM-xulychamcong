@@ -1441,6 +1441,240 @@
                         }
                     }
                     
+                    
+                    // ===== TÍNH TOÁN CÁC CỘT TỔNG =====
+                    
+                    // Tìm các cột tổng trong header (hàng 6, row index 5)
+                    let colTongGioCong = null;
+                    let colTongNgay = null;
+                    let colTongGioTC = null;
+                    let colTongPhutTre = null;
+                    let colTongPhutSom = null;
+                    
+                    // Scan từ cột 60 trở đi để tìm các cột tổng (bao gồm cả BO=67)
+                    for (let col = 60; col < 150; col++) {
+                        const headerRef = XLSX.utils.encode_cell({ r: 5, c: col }); // Row 6
+                        const headerCell = wsOriginal[headerRef];
+                        
+                        if (headerCell && headerCell.v) {
+                            const headerText = headerCell.v.toString().toLowerCase().trim();
+                            
+                            if (headerText.includes('tổng giờ công') || headerText.includes('tong gio cong')) {
+                                colTongGioCong = col;
+                                console.log(`Found Tổng Giờ Công at col ${col}`);
+                            } else if (headerText.includes('tổng ngày') || headerText.includes('tong ngay')) {
+                                colTongNgay = col;
+                                console.log(`Found Tổng Ngày at col ${col}`);
+                            } else if ((headerText.includes('tổng') || headerText.includes('tong')) && 
+                                      (headerText.includes('tăng ca') || headerText.includes('tang ca') || headerText.includes('tc'))) {
+                                colTongGioTC = col;
+                                console.log(`Found Tổng Giờ TC at col ${col}`);
+                            } else if (headerText.includes('phút trễ') || headerText.includes('phut tre') || 
+                                      headerText.includes('trễ') || headerText.includes('tre')) {
+                                colTongPhutTre = col;
+                                console.log(`Found Tổng Phút Trễ at col ${col}`);
+                            } else if (headerText.includes('phút sớm') || headerText.includes('phut som') ||
+                                      headerText.includes('sớm') || headerText.includes('som')) {
+                                colTongPhutSom = col;
+                                console.log(`Found Tổng Phút Sớm at col ${col}`);
+                            }
+                        }
+                    }
+                    
+                    console.log(`\nCột tổng found:`, {
+                        colTongGioCong,
+                        colTongNgay,
+                        colTongGioTC,
+                        colTongPhutTre,
+                        colTongPhutSom
+                    });
+                    
+                    // Helper để parse giờ vào thành minutes từ 7:30
+                    function parseTimeToMinutesFrom730(cell) {
+                        if (!cell || !cell.v) return null;
+                        
+                        let hours = 0;
+                        let minutes = 0;
+                        
+                        if (typeof cell.v === 'number') {
+                            // Excel serial number
+                            const totalMinutes = Math.round(cell.v * 24 * 60);
+                            hours = Math.floor(totalMinutes / 60) % 24;
+                            minutes = totalMinutes % 60;
+                        } else if (cell.w) {
+                            const parts = cell.w.split(':');
+                            if (parts.length >= 2) {
+                                hours = parseInt(parts[0]);
+                                minutes = parseInt(parts[1]);
+                            }
+                        } else if (cell.v instanceof Date) {
+                            hours = cell.v.getHours();
+                            minutes = cell.v.getMinutes();
+                        }
+                        
+                        // Tính khoảng cách từ 7:30
+                        const timeInMinutes = hours * 60 + minutes;
+                        const baseline730 = 7 * 60 + 30; // 7:30 = 450 minutes
+                        
+                        return timeInMinutes - baseline730;
+                    }
+                    
+                    // Tính toán cho từng nhân viên
+                    for (let row = 8; row < 500; row += 2) {
+                        const tenNVCell = wsOriginal[XLSX.utils.encode_cell({ r: row, c: 2 })];
+                        if (!tenNVCell || !tenNVCell.v) continue;
+                        
+                        // Khởi tạo các biến tổng cho nhân viên này
+                        let sumGioCong = 0;
+                        let sumGioTC = 0;
+                        let sumPhutTre = 0;
+                        let sumPhutSom = 0;
+                        
+                        // Tính tổng cho FILE ĐÃ TÁCH MỚI (không CN)
+                        for (const { day, col, isCN } of dayColumns) {
+                            const gioVaoRef = XLSX.utils.encode_cell({ r: row, c: col });
+                            const gioLamRef = XLSX.utils.encode_cell({ r: row + 1, c: col });
+                            const tangCaRef = XLSX.utils.encode_cell({ r: row + 1, c: col + 1 });
+                            
+                            // Lấy từ wsAdjustedNew
+                            const gioVaoCell = wsAdjustedNew[gioVaoRef];
+                            const gioLamCell = wsAdjustedNew[gioLamRef];
+                            const tangCaCell = wsAdjustedNew[tangCaRef];
+                            
+                            // Tổng giờ công
+                            if (gioLamCell && gioLamCell.v) {
+                                sumGioCong += gioLamCell.v;
+                            }
+                            
+                            // Tổng giờ tăng ca
+                            if (tangCaCell && tangCaCell.v) {
+                                sumGioTC += tangCaCell.v;
+                            }
+                            
+                            // Tổng phút trễ và sớm
+                            if (gioVaoCell && gioVaoCell.v) {
+                                const diffMinutes = parseTimeToMinutesFrom730(gioVaoCell);
+                                
+                                if (diffMinutes !== null) {
+                                    if (diffMinutes > 0) {
+                                        // Trễ
+                                        sumPhutTre += diffMinutes;
+                                    } else if (diffMinutes < 0) {
+                                        // Sớm (lấy giá trị tuyệt đối)
+                                        sumPhutSom += Math.abs(diffMinutes);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Làm tròn
+                        sumGioCong = Math.round(sumGioCong * 100) / 100;
+                        sumGioTC = Math.round(sumGioTC * 100) / 100;
+                        const sumNgay = Math.round((sumGioCong / 8) * 100) / 100;
+                        
+                        // Ghi vào FILE ĐÃ TÁCH MỚI
+                        if (colTongGioCong !== null) {
+                            const ref = XLSX.utils.encode_cell({ r: row, c: colTongGioCong });
+                            wsAdjustedNew[ref] = { t: 'n', v: sumGioCong };
+                        }
+                        
+                        if (colTongNgay !== null) {
+                            const ref = XLSX.utils.encode_cell({ r: row, c: colTongNgay });
+                            wsAdjustedNew[ref] = { t: 'n', v: sumNgay };
+                        }
+                        
+                        if (colTongGioTC !== null) {
+                            const ref = XLSX.utils.encode_cell({ r: row, c: colTongGioTC });
+                            wsAdjustedNew[ref] = { t: 'n', v: sumGioTC };
+                        }
+                        
+                        if (colTongPhutTre !== null) {
+                            const ref = XLSX.utils.encode_cell({ r: row, c: colTongPhutTre });
+                            wsAdjustedNew[ref] = { t: 'n', v: sumPhutTre };
+                        }
+                        
+                        if (colTongPhutSom !== null) {
+                            const ref = XLSX.utils.encode_cell({ r: row, c: colTongPhutSom });
+                            wsAdjustedNew[ref] = { t: 'n', v: sumPhutSom };
+                        }
+                        
+                        // Reset cho FILE FINAL
+                        let sumGioCongFinal = 0;
+                        let sumGioTCFinal = 0;
+                        let sumPhutTreFinal = 0;
+                        let sumPhutSomFinal = 0;
+                        
+                        // Tính tổng cho FILE FINAL (có CN + diff)
+                        for (const { day, col, isCN } of dayColumns) {
+                            const gioVaoRef = XLSX.utils.encode_cell({ r: row, c: col });
+                            const gioLamRef = XLSX.utils.encode_cell({ r: row + 1, c: col });
+                            const tangCaRef = XLSX.utils.encode_cell({ r: row + 1, c: col + 1 });
+                            
+                            // Lấy từ wsFinal
+                            const gioVaoCell = wsFinal[gioVaoRef];
+                            const gioLamCell = wsFinal[gioLamRef];
+                            const tangCaCell = wsFinal[tangCaRef];
+                            
+                            // Tổng giờ công
+                            if (gioLamCell && gioLamCell.v) {
+                                sumGioCongFinal += gioLamCell.v;
+                            }
+                            
+                            // Tổng giờ tăng ca
+                            if (tangCaCell && tangCaCell.v) {
+                                sumGioTCFinal += tangCaCell.v;
+                            }
+                            
+                            // Tổng phút trễ và sớm
+                            // Chỉ tính cho ngày CN (vì ngày thường là diff, không có ý nghĩa cho trễ/sớm)
+                            if (isCN && gioVaoCell && gioVaoCell.v) {
+                                const diffMinutes = parseTimeToMinutesFrom730(gioVaoCell);
+                                
+                                if (diffMinutes !== null) {
+                                    if (diffMinutes > 0) {
+                                        sumPhutTreFinal += diffMinutes;
+                                    } else if (diffMinutes < 0) {
+                                        sumPhutSomFinal += Math.abs(diffMinutes);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Làm tròn
+                        sumGioCongFinal = Math.round(sumGioCongFinal * 100) / 100;
+                        sumGioTCFinal = Math.round(sumGioTCFinal * 100) / 100;
+                        const sumNgayFinal = Math.round((sumGioCongFinal / 8) * 100) / 100;
+                        
+                        // Ghi vào FILE FINAL
+                        if (colTongGioCong !== null) {
+                            const ref = XLSX.utils.encode_cell({ r: row, c: colTongGioCong });
+                            wsFinal[ref] = { t: 'n', v: sumGioCongFinal };
+                        }
+                        
+                        if (colTongNgay !== null) {
+                            const ref = XLSX.utils.encode_cell({ r: row, c: colTongNgay });
+                            wsFinal[ref] = { t: 'n', v: sumNgayFinal };
+                        }
+                        
+                        if (colTongGioTC !== null) {
+                            const ref = XLSX.utils.encode_cell({ r: row, c: colTongGioTC });
+                            wsFinal[ref] = { t: 'n', v: sumGioTCFinal };
+                        }
+                        
+                        if (colTongPhutTre !== null) {
+                            const ref = XLSX.utils.encode_cell({ r: row, c: colTongPhutTre });
+                            wsFinal[ref] = { t: 'n', v: sumPhutTreFinal };
+                        }
+                        
+                        if (colTongPhutSom !== null) {
+                            const ref = XLSX.utils.encode_cell({ r: row, c: colTongPhutSom });
+                            wsFinal[ref] = { t: 'n', v: sumPhutSomFinal };
+                        }
+                    }
+                    
+                    console.log('✅ Đã tính xong các cột tổng');
+                    
+                    
                     // Thêm sheets vào workbooks
                     XLSX.utils.book_append_sheet(wbFinal, wsFinal, 'Sheet1');
                     XLSX.utils.book_append_sheet(wbAdjustedNew, wsAdjustedNew, 'Sheet1');
@@ -1509,7 +1743,6 @@
             
             input.click();
         }
-        
     </script>
 </body>
 </html>
