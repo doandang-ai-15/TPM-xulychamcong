@@ -322,10 +322,9 @@
             <h5 style="color: #f5576c; margin-top: 10px;">🔸 Xử Lý Giờ Tăng Ca:</h5>
             <ul>
                 <li><strong>Input:</strong> Cần 2 files (File Gốc + File Đã Tách)</li>
-                <li><strong>Giờ vào Final:</strong> |Gốc - Đã tách| (làm tròn 2 chữ số)</li>
-                <li><strong>Giờ ra Final:</strong> |Gốc - Đã tách| (làm tròn 2 chữ số)</li>
-                <li><strong>Giờ làm Final:</strong> |Gốc - Đã tách|</li>
-                <li><strong>Tăng ca Final:</strong> |Gốc - Đã tách|</li>
+                <li><strong>Ngày thường:</strong> Final = |Gốc - Đã tách|</li>
+                <li><strong>Ngày CN:</strong> Final = Copy nguyên từ Đã tách, Đã tách mới = 0</li>
+                <li><strong>Output:</strong> File Đã Tách Mới (không CN) + File Final (có CN + diff)</li>
             </ul>
         </div>
     </div>
@@ -1141,6 +1140,7 @@
         }
         
         // Hàm xử lý giờ tăng ca - tính diff giữa file gốc và file đã tách
+        // Hàm xử lý giờ tăng ca - tính diff giữa file gốc và file đã tách + xử lý CN
         async function processOvertime() {
             if (!selectedFile) {
                 showStatus('error', '❌ Vui lòng chọn file trước!');
@@ -1178,11 +1178,10 @@
                     const ws2 = wb2.Sheets[wb2.SheetNames[0]];
                     
                     // Xác định file nào là gốc, file nào là đã tách
-                    // File gốc thường có giờ ra lớn hơn
                     let wsOriginal, wsAdjusted, fileNameOriginal, fileNameAdjusted;
                     
-                    // Sample check một vài cell để xác định
-                    const sample1 = ws1[XLSX.utils.encode_cell({ r: 14, c: 5 })];  // Row 15, col F (giờ ra)
+                    // Sample check để xác định
+                    const sample1 = ws1[XLSX.utils.encode_cell({ r: 14, c: 5 })];
                     const sample2 = ws2[XLSX.utils.encode_cell({ r: 14, c: 5 })];
                     
                     if (sample1 && sample2 && sample1.v && sample2.v) {
@@ -1201,7 +1200,6 @@
                             fileNameAdjusted = files[0].name;
                         }
                     } else {
-                        // Không xác định được, lấy theo thứ tự
                         wsOriginal = ws1;
                         wsAdjusted = ws2;
                         fileNameOriginal = files[0].name;
@@ -1224,19 +1222,22 @@
                     
                     if (!month) month = 7; // Default
                     
-                    // Tạo workbook mới cho file Final
+                    // Tạo 2 workbooks mới
                     const wbFinal = XLSX.utils.book_new();
+                    const wbAdjustedNew = XLSX.utils.book_new();
                     const wsFinal = {};
+                    const wsAdjustedNew = {};
                     
-                    // Copy structure từ file gốc
+                    // Copy structure từ file gốc cho cả 2 files
                     const range = XLSX.utils.decode_range(wsOriginal['!ref']);
                     for (let R = range.s.r; R <= range.e.r; ++R) {
                         for (let C = range.s.c; C <= range.e.c; ++C) {
                             const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
                             const cellOriginal = wsOriginal[cellRef];
+                            const cellAdjusted = wsAdjusted[cellRef];
                             
+                            // Copy vào Final
                             if (cellOriginal) {
-                                // Copy cell
                                 wsFinal[cellRef] = {
                                     t: cellOriginal.t,
                                     v: cellOriginal.v,
@@ -1244,20 +1245,39 @@
                                     w: cellOriginal.w
                                 };
                             }
+                            
+                            // Copy vào Adjusted New
+                            if (cellAdjusted) {
+                                wsAdjustedNew[cellRef] = {
+                                    t: cellAdjusted.t,
+                                    v: cellAdjusted.v,
+                                    z: cellAdjusted.z,
+                                    w: cellAdjusted.w
+                                };
+                            }
                         }
                     }
                     
                     wsFinal['!ref'] = wsOriginal['!ref'];
-                    if (wsOriginal['!merges']) wsFinal['!merges'] = wsOriginal['!merges'];
-                    if (wsOriginal['!cols']) wsFinal['!cols'] = wsOriginal['!cols'];
-                    if (wsOriginal['!rows']) wsFinal['!rows'] = wsOriginal['!rows'];
+                    wsAdjustedNew['!ref'] = wsAdjusted['!ref'];
+                    if (wsOriginal['!merges']) {
+                        wsFinal['!merges'] = wsOriginal['!merges'];
+                        wsAdjustedNew['!merges'] = wsOriginal['!merges'];
+                    }
+                    if (wsOriginal['!cols']) {
+                        wsFinal['!cols'] = wsOriginal['!cols'];
+                        wsAdjustedNew['!cols'] = wsOriginal['!cols'];
+                    }
+                    if (wsOriginal['!rows']) {
+                        wsFinal['!rows'] = wsOriginal['!rows'];
+                        wsAdjustedNew['!rows'] = wsOriginal['!rows'];
+                    }
                     
                     // Helper để parse time thành số giờ
                     function parseTimeToHours(cell) {
                         if (!cell || !cell.v) return 0;
                         
                         if (typeof cell.v === 'number') {
-                            // Excel serial number
                             return cell.v * 24;
                         }
                         
@@ -1277,96 +1297,169 @@
                         return 0;
                     }
                     
-                    // Tìm các cột ngày
+                    // Tìm các cột ngày và xác định CN
                     const dayColumns = [];
+                    const cnColumns = []; // Lưu các cột Chủ Nhật
+                    
                     for (let col = 4; col < 100; col += 2) {
-                        const cellRef = XLSX.utils.encode_cell({ r: 6, c: col });
-                        const cell = wsOriginal[cellRef];
-                        if (cell && typeof cell.v === 'number' && cell.v >= 1 && cell.v <= 31) {
-                            dayColumns.push({ day: cell.v, col: col });
+                        const dayRef = XLSX.utils.encode_cell({ r: 6, c: col });
+                        const thuRef = XLSX.utils.encode_cell({ r: 7, c: col });
+                        
+                        const dayCell = wsOriginal[dayRef];
+                        const thuCell = wsOriginal[thuRef];
+                        
+                        if (dayCell && typeof dayCell.v === 'number' && dayCell.v >= 1 && dayCell.v <= 31) {
+                            const isCN = thuCell && thuCell.v === 'CN';
+                            
+                            dayColumns.push({ 
+                                day: dayCell.v, 
+                                col: col,
+                                isCN: isCN
+                            });
+                            
+                            if (isCN) {
+                                cnColumns.push({ day: dayCell.v, col: col });
+                            }
                         }
                     }
                     
+                    console.log(`Tìm thấy ${cnColumns.length} ngày Chủ Nhật:`, cnColumns.map(c => `Ngày ${c.day}`).join(', '));
+                    
                     // Xử lý từng nhân viên
                     let processedCount = 0;
+                    let cnProcessedCount = 0;
                     
                     for (let row = 8; row < 500; row += 2) {
                         const tenNVCell = wsOriginal[XLSX.utils.encode_cell({ r: row, c: 2 })];
                         if (!tenNVCell || !tenNVCell.v) continue;
                         
                         // Xử lý từng ngày
-                        for (const { day, col } of dayColumns) {
+                        for (const { day, col, isCN } of dayColumns) {
                             // Refs cho 4 thông số
                             const gioVaoRef = XLSX.utils.encode_cell({ r: row, c: col });
                             const gioRaRef = XLSX.utils.encode_cell({ r: row, c: col + 1 });
                             const gioLamRef = XLSX.utils.encode_cell({ r: row + 1, c: col });
                             const tangCaRef = XLSX.utils.encode_cell({ r: row + 1, c: col + 1 });
                             
-                            // Lấy giá trị từ file gốc
-                            const gioVaoOrig = wsOriginal[gioVaoRef];
-                            const gioRaOrig = wsOriginal[gioRaRef];
-                            const gioLamOrig = wsOriginal[gioLamRef];
-                            const tangCaOrig = wsOriginal[tangCaRef];
-                            
-                            // Lấy giá trị từ file đã tách
-                            const gioVaoAdj = wsAdjusted[gioVaoRef];
-                            const gioRaAdj = wsAdjusted[gioRaRef];
-                            const gioLamAdj = wsAdjusted[gioLamRef];
-                            const tangCaAdj = wsAdjusted[tangCaRef];
-                            
-                            // Tính diff
-                            // Giờ vào: diff = gốc - đã tách (số giờ)
-                            const gioVaoDiff = parseTimeToHours(gioVaoOrig) - parseTimeToHours(gioVaoAdj);
-                            
-                            // Giờ ra: diff = gốc - đã tách (số giờ)
-                            const gioRaDiff = parseTimeToHours(gioRaOrig) - parseTimeToHours(gioRaAdj);
-                            
-                            // Giờ làm: diff = gốc - đã tách
-                            const gioLamDiffVal = (gioLamOrig?.v || 0) - (gioLamAdj?.v || 0);
-                            const gioLamDiff = Math.round(gioLamDiffVal * 100) / 100;
-                            
-                            // Tăng ca: diff = gốc - đã tách
-                            const tangCaDiffVal = (tangCaOrig?.v || 0) - (tangCaAdj?.v || 0);
-                            const tangCaDiff = Math.round(tangCaDiffVal * 100) / 100;
-                            
-                            // Ghi vào file Final
-                            // Giờ vào: ghi số giờ (làm tròn 2 chữ số)
-                            wsFinal[gioVaoRef] = {
-                                t: 'n',
-                                v: Math.round(Math.abs(gioVaoDiff) * 100) / 100
-                            };
-                            
-                            // Giờ ra: ghi số giờ (làm tròn 2 chữ số)
-                            wsFinal[gioRaRef] = {
-                                t: 'n',
-                                v: Math.round(Math.abs(gioRaDiff) * 100) / 100
-                            };
-                            
-                            // Giờ làm chính thức
-                            wsFinal[gioLamRef] = {
-                                t: 'n',
-                                v: Math.abs(gioLamDiff)
-                            };
-                            
-                            // Tăng ca
-                            wsFinal[tangCaRef] = {
-                                t: 'n',
-                                v: Math.abs(tangCaDiff)
-                            };
+                            if (isCN) {
+                                // ===== XỬ LÝ NGÀY CHỦ NHẬT =====
+                                
+                                // 1. Copy NGUYÊN từ File Đã Tách → File Final
+                                const gioVaoAdj = wsAdjusted[gioVaoRef];
+                                const gioRaAdj = wsAdjusted[gioRaRef];
+                                const gioLamAdj = wsAdjusted[gioLamRef];
+                                const tangCaAdj = wsAdjusted[tangCaRef];
+                                
+                                if (gioVaoAdj) {
+                                    wsFinal[gioVaoRef] = {
+                                        t: gioVaoAdj.t,
+                                        v: gioVaoAdj.v,
+                                        z: gioVaoAdj.z,
+                                        w: gioVaoAdj.w
+                                    };
+                                }
+                                
+                                if (gioRaAdj) {
+                                    wsFinal[gioRaRef] = {
+                                        t: gioRaAdj.t,
+                                        v: gioRaAdj.v,
+                                        z: gioRaAdj.z,
+                                        w: gioRaAdj.w
+                                    };
+                                }
+                                
+                                if (gioLamAdj) {
+                                    wsFinal[gioLamRef] = {
+                                        t: gioLamAdj.t,
+                                        v: gioLamAdj.v
+                                    };
+                                }
+                                
+                                if (tangCaAdj) {
+                                    wsFinal[tangCaRef] = {
+                                        t: tangCaAdj.t,
+                                        v: tangCaAdj.v
+                                    };
+                                }
+                                
+                                // 2. XÓA SẠCH trong File Đã Tách Mới
+                                wsAdjustedNew[gioVaoRef] = { t: 'n', v: 0 };
+                                wsAdjustedNew[gioRaRef] = { t: 'n', v: 0 };
+                                wsAdjustedNew[gioLamRef] = { t: 'n', v: 0 };
+                                wsAdjustedNew[tangCaRef] = { t: 'n', v: 0 };
+                                
+                                cnProcessedCount++;
+                                
+                            } else {
+                                // ===== XỬ LÝ NGÀY THƯỜNG (KHÔNG PHẢI CN) =====
+                                
+                                // Lấy giá trị từ file gốc
+                                const gioVaoOrig = wsOriginal[gioVaoRef];
+                                const gioRaOrig = wsOriginal[gioRaRef];
+                                const gioLamOrig = wsOriginal[gioLamRef];
+                                const tangCaOrig = wsOriginal[tangCaRef];
+                                
+                                // Lấy giá trị từ file đã tách
+                                const gioVaoAdj = wsAdjusted[gioVaoRef];
+                                const gioRaAdj = wsAdjusted[gioRaRef];
+                                const gioLamAdj = wsAdjusted[gioLamRef];
+                                const tangCaAdj = wsAdjusted[tangCaRef];
+                                
+                                // Tính diff
+                                const gioVaoDiff = parseTimeToHours(gioVaoOrig) - parseTimeToHours(gioVaoAdj);
+                                const gioRaDiff = parseTimeToHours(gioRaOrig) - parseTimeToHours(gioRaAdj);
+                                const gioLamDiffVal = (gioLamOrig?.v || 0) - (gioLamAdj?.v || 0);
+                                const gioLamDiff = Math.round(gioLamDiffVal * 100) / 100;
+                                const tangCaDiffVal = (tangCaOrig?.v || 0) - (tangCaAdj?.v || 0);
+                                const tangCaDiff = Math.round(tangCaDiffVal * 100) / 100;
+                                
+                                // Ghi vào file Final
+                                wsFinal[gioVaoRef] = {
+                                    t: 'n',
+                                    v: Math.round(Math.abs(gioVaoDiff) * 100) / 100
+                                };
+                                
+                                wsFinal[gioRaRef] = {
+                                    t: 'n',
+                                    v: Math.round(Math.abs(gioRaDiff) * 100) / 100
+                                };
+                                
+                                wsFinal[gioLamRef] = {
+                                    t: 'n',
+                                    v: Math.abs(gioLamDiff)
+                                };
+                                
+                                wsFinal[tangCaRef] = {
+                                    t: 'n',
+                                    v: Math.abs(tangCaDiff)
+                                };
+                                
+                                // File Đã Tách Mới giữ nguyên (đã copy ở trên)
+                            }
                             
                             processedCount++;
                         }
                     }
                     
-                    // Thêm sheet vào workbook
+                    // Thêm sheets vào workbooks
                     XLSX.utils.book_append_sheet(wbFinal, wsFinal, 'Sheet1');
+                    XLSX.utils.book_append_sheet(wbAdjustedNew, wsAdjustedNew, 'Sheet1');
                     
-                    // Tạo file output
+                    // Tạo files output
                     const finalOutput = XLSX.write(wbFinal, { bookType: 'xlsx', type: 'array' });
+                    const adjustedNewOutput = XLSX.write(wbAdjustedNew, { bookType: 'xlsx', type: 'array' });
+                    
                     const finalBlob = new Blob([finalOutput], { 
                         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
                     });
+                    const adjustedNewBlob = new Blob([adjustedNewOutput], { 
+                        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+                    });
+                    
                     const finalUrl = URL.createObjectURL(finalBlob);
+                    const adjustedNewUrl = URL.createObjectURL(adjustedNewBlob);
+                    
+                    const fileName = fileNameOriginal.replace('.xlsx', '').replace(' đã xử lý', '');
                     
                     // Hiển thị kết quả
                     statusArea.innerHTML = `
@@ -1379,23 +1472,28 @@
                                 <p>Tháng chấm công</p>
                             </div>
                             <div class="stat-card">
-                                <h3>${dayColumns.length}</h3>
-                                <p>Ngày làm việc</p>
+                                <h3>${cnColumns.length}</h3>
+                                <p>Ngày CN đã xử lý</p>
                             </div>
                             <div class="stat-card">
                                 <h3>${processedCount}</h3>
-                                <p>Bản ghi đã xử lý</p>
+                                <p>Tổng bản ghi</p>
                             </div>
                         </div>
                         <div class="files-info" style="margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 10px;">
                             <p style="margin: 5px 0;"><strong>📄 File gốc:</strong> ${fileNameOriginal}</p>
                             <p style="margin: 5px 0;"><strong>📄 File đã tách:</strong> ${fileNameAdjusted}</p>
+                            <p style="margin: 5px 0; color: #f5576c;"><strong>🎯 Ngày CN:</strong> ${cnColumns.map(c => `Ngày ${c.day}`).join(', ')}</p>
                         </div>
                         <div class="download-links">
-                            <a href="${finalUrl}" download="Final Tháng ${month}.xlsx" 
+                            <a href="${adjustedNewUrl}" download="${fileName} Đã Tách Mới.xlsx" 
+                               class="download-btn adjusted">
+                                📥 Tải File Đã Tách Mới (Không CN)
+                            </a>
+                            <a href="${finalUrl}" download="Final Tháng ${month} Kèm CN.xlsx" 
                                class="download-btn" 
-                               style="width: 100%; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
-                                📥 Tải File Final (Giờ Tăng Ca)
+                               style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                                📥 Tải File Final (Có CN + Diff)
                             </a>
                         </div>
                     `;
@@ -1411,6 +1509,7 @@
             
             input.click();
         }
+        
     </script>
 </body>
 </html>
